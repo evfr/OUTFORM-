@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Image Gallery</title>
+  <style>
+    img { height: 150px; margin: 10px; }
+    .image-block { margin-bottom: 30px; border: 1px solid #ccc; padding: 10px; display: inline-block; }
+  </style>
+</head>
+<body>
+  <h1>Upload Image</h1>
+  <form id="uploadForm">
+    <input type="file" name="image" required />
+    <button type="submit">Upload</button>
+  </form>
+
+  <h2>Gallery</h2>
+  <div id="gallery"></div>
+
+  <script>
+    async function loadImages() {
+      const res = await fetch('/api/images');
+      const images = await res.json();
+      const gallery = document.getElementById('gallery');
+      gallery.innerHTML = '';
+      for (let img of images) {
+        const div = document.createElement('div');
+        div.className = 'image-block';
+        div.innerHTML = `
+          <img src="/uploads/original/${img.url}" /><br>
+          <b>${img.id}</b><br><br>
+
+          <form onsubmit="return transformImage(event, '${img.id}')">
+            <label>Rotate (deg): <input type="number" name="rotate" /></label><br>
+            <label>Resize Width: <input type="number" name="width" /></label><br>
+            <label>Resize Height: <input type="number" name="height" /></label><br>
+            <label><input type="checkbox" name="grayscale" /> Grayscale</label><br>
+            <label>
+              Flip:
+              <select name="flip">
+                <option value="">None</option>
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+              </select>
+            </label><br>
+            <label>
+              Format:
+              <select name="format">
+                <option value="">Same</option>
+                <option value="jpeg">JPEG</option>
+                <option value="png">PNG</option>
+                <option value="webp">WEBP</option>
+              </select>
+            </label><br>
+            <button type="submit">Apply Transform</button>
+          </form><br>
+          <button onclick="showVersions('${img.id}')">Show Versions</button>
+          <button onclick="showMetadata('${img.id}')">Show Metadata</button><br>
+          <div id="metadata-${img.id}" style="margin-top: 8px;"></div><br>
+          <button onclick="deleteImage('${img.id}')">Delete</button>
+          <ul id="versions-${img.id}"></ul>
+        `;
+        gallery.appendChild(div);
+      }
+    }
+
+    async function deleteImage(filename) {
+      if (!confirm(`Delete ${filename}?`)) return;
+
+      const res = await fetch(`/api/images/${filename}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        alert('Image deleted');
+        loadImages();
+      } else {
+        alert('Failed to delete image');
+      }
+    }
+
+    async function transformImage(e, filename) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const body = {};
+
+      if (formData.get('rotate')) body.rotate = parseInt(formData.get('rotate'));
+      if (formData.get('width') || formData.get('height')) {
+        body.resize = {
+          width: formData.get('width') ? parseInt(formData.get('width')) : undefined,
+          height: formData.get('height') ? parseInt(formData.get('height')) : undefined
+        };
+      }
+      if (formData.get('grayscale')) body.grayscale = true;
+      if (formData.get('flip')) body.flip = formData.get('flip');
+      if (formData.get('format')) body.format = formData.get('format');
+
+      const res = await fetch(`/api/transform/${filename}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        alert('Transform applied!');
+        loadImages();
+      } else {
+        alert('Error applying transformation');
+      }
+    }
+
+    async function showVersions(filename) {
+      const res = await fetch(`/api/versions/${filename}`);
+      if (!res.ok) {
+        alert('Failed to fetch versions');
+        return;
+      }
+
+      const versions = await res.json();
+      const container = document.getElementById(`versions-${filename}`);
+      container.innerHTML = '';
+
+      if (versions.length === 0) {
+        container.innerHTML = '<p><i>No versions yet</i></p>';
+        return;
+      }
+
+      versions.forEach(v => {
+        const versionEl = document.createElement('div');
+        versionEl.style.marginBottom = '10px';
+
+        versionEl.innerHTML = `
+          <img src="${v.path}" height="100"><br>
+          <small>ID: ${v.versionId}</small><br>
+          <button onclick="revertVersion('${filename}', '${v.versionId}')">Revert to this</button>
+        `;
+
+        container.appendChild(versionEl);
+      });
+    }
+
+    async function revertVersion(filename, versionId) {
+      if (!confirm(`Revert ${filename} to version ${versionId}?`)) return;
+
+      const res = await fetch(`/api/revert/${filename}/${versionId}`, {
+        method: 'POST'
+      });
+
+      if (res.ok) {
+        alert('Reverted successfully!');
+        loadImages(); // reload updated image
+      } else {
+        alert('Revert failed.');
+      }
+    }
+
+    async function showMetadata(filename) {
+      const container = document.getElementById(`metadata-${filename}`);
+      container.innerHTML = 'Loading...';
+
+      let url = `/api/metadata/${filename}`;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Failed to load metadata');
+
+        const data = await res.json();
+
+        container.innerHTML = `
+          <strong>Metadata:</strong><br>
+          Format: ${data.format}<br>
+          Width: ${data.width}px<br>
+          Height: ${data.height}px<br>
+          Size: ${data.size || '?'} bytes
+        `;
+      } catch (err) {
+        container.innerHTML = `<span style="color: red;">Error loading metadata</span>`;
+      }
+    }
+
+
+    document.getElementById('uploadForm').onsubmit = async e => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      await fetch('/api/upload', {
+        method: 'POST',
+        body: form
+      });
+      e.target.reset();
+      loadImages();
+    };
+
+    loadImages();
+  </script>
+</body>
+</html>
