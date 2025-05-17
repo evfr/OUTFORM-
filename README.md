@@ -14,3 +14,6 @@ How to run:
 7. press "Show Versions" to see available versions
 8. you can revert versions to a specific version
 9. press "delete"  to delete an original with all of its versions 
+
+REMARKS:
+using json file to store data is not optimal, in real world I weould be using a db and store data on a cloud like AWS S3
