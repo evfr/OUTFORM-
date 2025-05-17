@@ -42,9 +42,7 @@ exports.deleteImage = (req, res) => {
   if (!metadata[id]) return res.status(404).json({ error: 'Image not found' });
 
   fs.unlinkSync(path.join('uploads/original', id));
-  metadata[id].versions.forEach(v => {
-    fs.unlinkSync(path.join('uploads/versions', id, v.filename));
-  });
+  fs.rmSync(path.join(__dirname, './uploads/versions', id), { recursive: true, force: true });
   delete metadata[id];
   saveMetadata(metadata);
   res.json({ message: 'Image deleted' });
